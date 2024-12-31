@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "gpt-add"
+version = "0.1.0"
+description = ""
+authors = []
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+torch = "^2.5.1"
+fire = "^0.7.0"
+pytest = "^8.3.4"
+outlines = "^0.1.8"
+tensorboard = "^2.18.0"
+torch-tb-profiler = "^0.4.3"
+seaborn = "^0.13.2"
+matplotlib = "^3.9.4"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
