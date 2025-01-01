@@ -15,6 +15,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from outlines.processors.structured import RegexLogitsProcessor
+from typing import Optional, Tuple
 
 
 class LayerNorm(nn.Module):
@@ -25,11 +26,11 @@ class LayerNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(ndim, device=device))
         self.bias = nn.Parameter(torch.zeros(ndim, device=device)) if bias else None
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
-def norm(x):
+def norm(x: torch.Tensor) -> torch.Tensor:
     return F.rms_norm(x, (x.size(-1),))
 
 
@@ -42,7 +43,7 @@ class Rotary(torch.nn.Module):
         self.cos_cached = None
         self.sin_cached = None
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         seq_len = x.shape[1]
         if seq_len != self.seq_len_cached:
             t = torch.arange(seq_len, device=x.device)
@@ -94,7 +95,9 @@ class CausalSelfAttention(nn.Module):
                 ),
             )
 
-    def forward(self, x, attn_mask=None):
+    def forward(
+        self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         B, T, C = (
             x.size()
         )  # batch size, sequence length, embedding dimensionality (n_embd)
@@ -150,7 +153,7 @@ class MLP(nn.Module):
             4 * config.n_embd, config.n_embd, bias=config.bias, device=device
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.c_fc(x)
         x = F.relu(x).square()  # better than relu
         x = self.c_proj(x)
@@ -166,7 +169,9 @@ class Block(nn.Module):
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias, device=device)
         self.mlp = MLP(config, device=device)
 
-    def forward(self, x, attn_mask=None):
+    def forward(
+        self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         x = x + self.attn(self.ln_1(x), attn_mask=attn_mask)
         x = x + self.mlp(self.ln_2(x))
         return x
@@ -225,7 +230,7 @@ class GPT(nn.Module):
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params() / 1e6,))
 
-    def get_num_params(self, non_embedding=True):
+    def get_num_params(self, non_embedding: bool = True) -> int:
         """
         Return the number of parameters in the model.
         For non-embedding count (default), the position embeddings get subtracted.
@@ -237,7 +242,7 @@ class GPT(nn.Module):
             n_params -= self.transformer.wpe.weight.numel()
         return n_params
 
-    def _init_weights(self, module):
+    def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
@@ -245,7 +250,12 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None, attn_mask=None):
+    def forward(
+        self,
+        idx: torch.Tensor,
+        targets: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         device = idx.device
         b, t = idx.size()
         assert (
@@ -275,7 +285,7 @@ class GPT(nn.Module):
 
         return logits, loss
 
-    def crop_block_size(self, block_size):
+    def crop_block_size(self, block_size: int) -> None:
         # model surgery to decrease the block size if necessary
         # e.g. we may load the GPT2 pretrained model checkpoint (block size 1024)
         # but want to use a smaller block size for some smaller, simpler model
@@ -288,7 +298,13 @@ class GPT(nn.Module):
             if hasattr(block.attn, "bias"):
                 block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]
 
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+    def configure_optimizers(
+        self,
+        weight_decay: float,
+        learning_rate: float,
+        betas: Tuple[float, float],
+        device_type: str,
+    ) -> torch.optim.Optimizer:
         # start with all of the candidate parameters
         param_dict = {pn: p for pn, p in self.named_parameters()}
         # filter out those that do not require grad
@@ -323,12 +339,12 @@ class GPT(nn.Module):
     @torch.no_grad()
     def generate(
         self,
-        idx,
-        params,
+        idx: torch.Tensor,
+        params: object,
         logits_processor: RegexLogitsProcessor,
-        sampling_params,
-        attn_mask=None,
-    ):
+        sampling_params: object,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         temperature = sampling_params.temperature
         temperature = 1.0 if temperature is None else temperature
         top_k = sampling_params.top_k
@@ -382,7 +398,7 @@ def create_gpt_model(
     batch_size: int,
     model_size: str,
     device: torch.device,
-):
+) -> Tuple[GPT, str]:
     if model_size == "small":
         n_layers, n_head, n_embd = 1, 8, 128
     elif model_size == "medium":

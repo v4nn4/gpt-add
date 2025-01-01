@@ -8,9 +8,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 
 from gpt_add.arithmetic import check_rhs, get_operator, match
-from gpt_add.bigram import BigramModel, create_bigram_model
 from gpt_add.encode import prepare_data
-from gpt_add.model import GPT, GPTConfig, create_gpt_model
+from gpt_add.models.bigram import BigramModel, create_bigram_model
+from gpt_add.models.gpt import GPT, create_gpt_model
 
 torch._dynamo.config.suppress_errors = True
 
@@ -24,7 +24,9 @@ device = (
 )
 
 
-def get_batch(data, block_size, batch_size):
+def get_batch(
+    data: torch.Tensor, block_size: int, batch_size: int
+) -> tuple[torch.Tensor, torch.Tensor]:
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([data[i : i + block_size] for i in ix])
     y = torch.stack([data[i + 1 : i + block_size + 1] for i in ix])
@@ -33,7 +35,13 @@ def get_batch(data, block_size, batch_size):
 
 
 @torch.no_grad()
-def estimate_loss(model, data, block_size, batch_size, eval_iters):
+def estimate_loss(
+    model: GPT | BigramModel,
+    data: torch.Tensor,
+    block_size: int,
+    batch_size: int,
+    eval_iters: int,
+) -> float:
     losses = torch.zeros(eval_iters)
     for k in range(eval_iters):
         x, y = get_batch(data, block_size, batch_size)
@@ -45,13 +53,13 @@ def estimate_loss(model, data, block_size, batch_size, eval_iters):
 @torch.no_grad()
 def estimate_scores(
     model: GPT | BigramModel,
-    match,
-    check_rhs,
-    operator,
-    symbol,
-    pattern,
-    prompts,
-    targets,
+    match: callable,
+    check_rhs: callable,
+    operator: str,
+    symbol: str,
+    pattern: str,
+    prompts: list[torch.Tensor],
+    targets: list[torch.Tensor],
 ) -> tuple[float, float, float]:
     generator = generate.regex(
         model, regex_str="(?:[0-9]|[1-9][0-9]|[1-9][0-9]{2}|1[0-9]{3});"

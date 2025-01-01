@@ -2,15 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from outlines.models.tokenizer import Tokenizer
+from typing import Optional, Tuple
 
 
 class BigramModel(nn.Module):
-    def __init__(self, vocab_size, block_size):
+    def __init__(self, vocab_size: int, block_size: int):
         super(BigramModel, self).__init__()
         self.embedding = nn.Embedding(vocab_size, vocab_size)
         self.block_size = block_size
 
-    def forward(self, x, targets=None):
+    def forward(
+        self, x: torch.Tensor, targets: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # x: (batch_size, seq_len)
         logits = self.embedding(x)  # (batch_size, seq_len, embedding_dim)
 
@@ -21,7 +24,13 @@ class BigramModel(nn.Module):
         return logits, None
 
     @torch.no_grad()
-    def generate(self, idx, params, logits_processor, sampling_params):
+    def generate(
+        self,
+        idx: torch.Tensor,
+        params: object,
+        logits_processor: object,
+        sampling_params: object,
+    ) -> torch.Tensor:
         temperature = sampling_params.temperature
         temperature = 1.0 if temperature is None else temperature
         top_k = sampling_params.top_k
@@ -58,14 +67,22 @@ class BigramModel(nn.Module):
 
         return idx
 
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+    def configure_optimizers(
+        self,
+        weight_decay: float,
+        learning_rate: float,
+        betas: Tuple[float, float],
+        device_type: str,
+    ) -> torch.optim.Optimizer:
         optimizer = torch.optim.AdamW(
             self.parameters(), lr=learning_rate, betas=betas, weight_decay=weight_decay
         )
         return optimizer
 
 
-def create_bigram_model(tokenizer: Tokenizer, block_size: int, device: torch.device):
+def create_bigram_model(
+    tokenizer: Tokenizer, block_size: int, device: torch.device
+) -> Tuple[BigramModel, str]:
     vocab_size = len(tokenizer.vocabulary.items())
     model = BigramModel(vocab_size=vocab_size, block_size=block_size).to(device)
     model.tokenizer = tokenizer
