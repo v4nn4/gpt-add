@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from outlines.models.tokenizer import Tokenizer
 
 
 class BigramModel(nn.Module):
@@ -62,3 +63,10 @@ class BigramModel(nn.Module):
             self.parameters(), lr=learning_rate, betas=betas, weight_decay=weight_decay
         )
         return optimizer
+
+
+def create_bigram_model(tokenizer: Tokenizer, block_size: int, device: torch.device):
+    vocab_size = len(tokenizer.vocabulary.items())
+    model = BigramModel(vocab_size=vocab_size, block_size=block_size).to(device)
+    model.tokenizer = tokenizer
+    return model, "bigram"

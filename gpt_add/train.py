@@ -1,24 +1,27 @@
-from datetime import datetime
 import os
+from datetime import datetime
+
 import torch
+import torch._dynamo
+from outlines import generate
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
+
 from gpt_add.arithmetic import check_rhs, get_operator, match
-from gpt_add.bigram import BigramModel
-from gpt_add.model import GPT, GPTConfig
-from outlines import generate
-
+from gpt_add.bigram import BigramModel, create_bigram_model
 from gpt_add.encode import prepare_data
+from gpt_add.model import GPT, GPTConfig, create_gpt_model
 
+torch._dynamo.config.suppress_errors = True
 
+torch.manual_seed(1337)
+if torch.cuda.is_available():
+    torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
 device = (
     torch.device("mps")
     if torch.backends.mps.is_available()
     else torch.device("cuda" if torch.cuda.is_available() else "cpu")
 )
-torch.manual_seed(1337)
-if torch.cuda.is_available():
-    torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
 
 
 def get_batch(data, block_size, batch_size):
@@ -92,43 +95,6 @@ def estimate_scores(
     return format_score / len_format, abs_diff / len_diff, value_score / len_diff
 
 
-def create_bigram_model(tokenizer, block_size: int = 16):
-    vocab_size = len(tokenizer.vocabulary.items())
-    model = BigramModel(vocab_size=vocab_size, block_size=block_size).to(device)
-    model.tokenizer = tokenizer
-    return model, "bigram"
-
-
-def create_gpt_model(
-    tokenizer,
-    block_size: int = 16,
-    model_size: str = "medium",
-):
-    if model_size == "small":
-        n_layers, n_head, n_embd = 1, 8, 128
-    elif model_size == "medium":
-        n_layers, n_head, n_embd = 4, 32, 128
-    elif model_size == "large":
-        n_layers, n_head, n_embd = 8, 32, 128
-
-    vocab_size = len(tokenizer.vocabulary.items())
-    config = GPTConfig(
-        n_layer=n_layers,
-        n_head=n_head,
-        n_embd=n_embd,
-        block_size=block_size,
-        vocab_size=vocab_size,
-        dropout=0.0,
-        bias=False,
-    )
-    model = GPT(config, device).to(device)
-    model.tokenizer = tokenizer
-    model_name = (
-        f"gpt_add_{config.n_layer}layers_{config.n_head}heads_{config.n_embd}embd"
-    )
-    return model, model_name
-
-
 def train(
     nb_samples_scoring: int,
     max_iters: int,
@@ -154,9 +120,15 @@ def train(
     model, model_name = (
         create_bigram_model(tokenizer, block_size=block_size)
         if use_bigram
-        else create_gpt_model(tokenizer, block_size=block_size, model_size=model_size)
+        else create_gpt_model(
+            tokenizer,
+            batch_size=batch_size,
+            block_size=block_size,
+            model_size=model_size,
+            device=device,
+        )
     )
-    # model = torch.compile(model)
+    model = torch.compile(model, backend="aot_eager")
 
     optimizer = torch.optim.AdamW(lr=learning_rate, params=model.parameters())
     scheduler = ReduceLROnPlateau(optimizer, patience=5, factor=0.5, min_lr=1e-6)
@@ -205,12 +177,14 @@ def train(
             writer.add_scalar("Score/Approx", approx_score, iter)
             writer.add_scalar("Score/Exact", exact_score, iter)
 
+            current_lr = optimizer.param_groups[0]["lr"]
             print(
-                f"step {iter}: train loss {train_loss:.4f}, val loss {val_loss:.4f}, format_score {format_score:.4f}, abs_diff {approx_score:.4f}, value_score {exact_score:.4f}"
+                f"step {iter}: train loss {train_loss:.4f}, val loss {val_loss:.4f}, format_score {format_score:.4f}, abs_diff {approx_score:.4f}, value_score {exact_score:.4f}, lr {current_lr}"
             )
             scheduler.step(metrics=1 - exact_score)
 
     if save_model:
+        os.makedirs("build", exist_ok=True)
         torch.save(model.state_dict(), os.path.join("build", f"{model_name}.pth"))
         print(f"Model saved as {model_name}.pth")
 

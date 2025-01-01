@@ -1,7 +1,7 @@
 import torch
 
-from gpt_add.tokenizer import CustomTokenizer
 from gpt_add.data import create_equations
+from gpt_add.tokenizer import CustomTokenizer
 
 
 def encode_equations(

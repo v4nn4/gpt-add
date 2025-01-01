@@ -12,11 +12,11 @@ def get_operator(name: str) -> tuple[typing.Callable, str, str]:
     raise Exception(f"Operator {name} unknown")
 
 
-def match(s, pattern):
+def match(s: str, pattern: str) -> bool:
     return re.match(pattern, s) is not None
 
 
-def check_rhs(s, operator, symbol):
+def check_rhs(s: str, operator: typing.Callable[[int, int], int], symbol: str):
     lhs, rhs = s.split("=")
     num1, num2 = lhs.split(symbol)
     expected_rhs = operator(int(num1), int(num2))

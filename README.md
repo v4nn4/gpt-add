@@ -1,2 +1,3 @@
 # gpt-add
-Learning addition from text using a constrained transformer
+
+Learning addition from text using a constrained transformer model.

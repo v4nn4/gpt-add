@@ -7,8 +7,8 @@ https://github.com/openai/gpt-2/blob/master/src/model.py
 https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 """
 
-import math
 import inspect
+import math
 from dataclasses import dataclass
 
 import torch
@@ -374,3 +374,33 @@ class GPT(nn.Module):
             # attn_mask = torch.cat([attn_mask, attn_mask_next], dim=1)
 
         return idx
+
+
+def create_gpt_model(
+    tokenizer,
+    block_size: int,
+    batch_size: int,
+    model_size: str,
+    device: torch.device,
+):
+    if model_size == "small":
+        n_layers, n_head, n_embd = 1, 8, 128
+    elif model_size == "medium":
+        n_layers, n_head, n_embd = 4, 32, 128
+    elif model_size == "large":
+        n_layers, n_head, n_embd = 8, 64, 128
+
+    vocab_size = len(tokenizer.vocabulary.items())
+    config = GPTConfig(
+        n_layer=n_layers,
+        n_head=n_head,
+        n_embd=n_embd,
+        block_size=block_size,
+        vocab_size=vocab_size,
+        dropout=0.0,
+        bias=False,
+    )
+    model = GPT(config, device).to(device)
+    model.tokenizer = tokenizer
+    model_name = f"gpt_add_{block_size}_{batch_size}_{config.n_layer}_{config.n_head}_{config.n_embd}"
+    return model, model_name

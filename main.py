@@ -1,5 +1,6 @@
-from gpt_add.train import train
 import fire
+
+from gpt_add.train import train
 
 
 class Trainer:
@@ -9,11 +10,12 @@ class Trainer:
         max_iters: int = 50000,
         use_bigram: bool = False,
         model_size: str = "medium",
-        block_size: int = 128,
-        batch_size: int = 32,
+        block_size: int = 256,
+        batch_size: int = 8,
         eval_interval: int = 1000,
         learning_rate: float = 2e-3,
         eval_iters: int = 100,
+        save_model: bool = False,
     ) -> None:
         train(
             nb_samples_scoring=nb_samples_scoring,
@@ -25,6 +27,7 @@ class Trainer:
             eval_interval=eval_interval,
             learning_rate=learning_rate,
             eval_iters=eval_iters,
+            save_model=save_model,
         )
 
 
