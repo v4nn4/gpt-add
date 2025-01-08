@@ -7,7 +7,7 @@ from outlines import generate
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 
-from gpt_add.arithmetic import check_rhs, get_operator, match
+from gpt_add.operation import check_rhs, get_operator, match
 from gpt_add.encode import prepare_data
 from gpt_add.models.bigram import BigramModel, create_bigram_model
 from gpt_add.models.gpt import GPT, create_gpt_model
@@ -27,9 +27,45 @@ device = (
 def get_batch(
     data: torch.Tensor, block_size: int, batch_size: int
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    ix = torch.randint(len(data) - block_size, (batch_size,))
+    ix = torch.randint(0, len(data) - block_size, (batch_size,))
     x = torch.stack([data[i : i + block_size] for i in ix])
     y = torch.stack([data[i + 1 : i + block_size + 1] for i in ix])
+
+    # Mask y based on the position of ';' and '=' in x
+    for i in range(batch_size):
+        eq_indices = (x[i] == 12).nonzero(as_tuple=True)[
+            0
+        ]  # '=' token is represented by 12
+        semicolon_indices = (x[i] == 11).nonzero(as_tuple=True)[
+            0
+        ]  # ';' token is represented by 11
+
+        # Initialize mask with -1
+        mask = torch.ones_like(y[i]) * -1
+
+        # Unmask y for segments between ';' and '='
+        for j in range(len(eq_indices)):
+            if j < len(semicolon_indices):
+                if eq_indices[j] < semicolon_indices[j]:
+                    start = eq_indices[j] - 1
+                    end = semicolon_indices[j] + 1
+                else:
+                    start = semicolon_indices[j] - 1
+                    end = eq_indices[j] + 1
+                mask[start:end] = y[
+                    i, start:end
+                ]  # Unmask the segment between ';' and '='
+
+        # Unmask everything before the first semicolon
+        if semicolon_indices[0] < eq_indices[0]:
+            mask[: semicolon_indices[0] + 1] = y[i, : semicolon_indices[0] + 1]
+
+        # Unmask everything after the last equal sign
+        if eq_indices[-1] > semicolon_indices[-1]:
+            mask[eq_indices[-1] - 1 :] = y[i, eq_indices[-1] - 1 :]
+
+        y[i] = mask
+
     x, y = x.to(device), y.to(device)
     return x, y
 
@@ -62,7 +98,9 @@ def estimate_scores(
     targets: list[torch.Tensor],
 ) -> tuple[float, float, float]:
     generator = generate.regex(
-        model, regex_str="(?:[0-9]|[1-9][0-9]|[1-9][0-9]{2}|1[0-9]{3});"
+        model,
+        regex_str="(?:[0-1][0-9]{3});",
+        # regex_str="(?:[1-9]|[1-9][0-9]|[1-9][0-9]{2});",
     )
 
     max_tokens = 4
@@ -116,14 +154,13 @@ def train(
     eval_iters: int,
 ) -> None:
     print("Starting training model...")
+    operator, pattern, symbol = get_operator("add")
     (
         train_data,
         val_data,
         (test_prompts, _, test_targets),
         tokenizer,
-    ) = prepare_data()
-
-    operator, pattern, symbol = get_operator("add")
+    ) = prepare_data(operator=operator, symbol=symbol)
 
     model, model_name = (
         create_bigram_model(tokenizer, block_size=block_size)
@@ -139,7 +176,7 @@ def train(
     model = torch.compile(model, backend="aot_eager")
 
     optimizer = torch.optim.AdamW(lr=learning_rate, params=model.parameters())
-    scheduler = ReduceLROnPlateau(optimizer, patience=5, factor=0.5, min_lr=1e-6)
+    scheduler = ReduceLROnPlateau(optimizer, patience=2, factor=0.5, min_lr=1e-6)
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     experiment_name = f"{model_name}_{timestamp}"

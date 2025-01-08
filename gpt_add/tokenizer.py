@@ -3,8 +3,10 @@ from typing import List, Tuple
 
 
 class CustomTokenizer(Tokenizer):
-    def __init__(self):
-        self.vocabulary = {k: v for (v, k) in enumerate(sorted(set("0123456789+=;")))}
+    def __init__(self, symbol: str):
+        self.vocabulary = {
+            k: v for (v, k) in enumerate(sorted(set(f"0123456789{symbol}=;")))
+        }
         self.special_tokens = set()
         self.stoi = self.vocabulary
         self.itos = {v: k for k, v in self.vocabulary.items()}

@@ -10,10 +10,10 @@ class Trainer:
         max_iters: int = 50000,
         use_bigram: bool = False,
         model_size: str = "medium",
-        block_size: int = 256,
-        batch_size: int = 8,
+        block_size: int = 64,
+        batch_size: int = 64,
         eval_interval: int = 1000,
-        learning_rate: float = 2e-3,
+        learning_rate: float = 0.0005,
         eval_iters: int = 100,
         save_model: bool = False,
     ) -> None:

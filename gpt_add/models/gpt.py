@@ -80,7 +80,7 @@ class CausalSelfAttention(nn.Module):
         self.dropout = config.dropout
         dim = config.n_embd
         num_heads = config.n_head
-        self.rotary = Rotary(dim // num_heads)  # dim // num_heads = head_dim
+        # self.rotary = Rotary(dim // num_heads)  # dim // num_heads = head_dim
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
         if not self.flash:
@@ -107,8 +107,8 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, -1)
         q = q.view(B, T, self.n_head, -1)
         v = v.view(B, T, self.n_head, -1)
-        q, k = norm(q), norm(k)
-        q, k = self.rotary(q), self.rotary(k)
+        # q, k = norm(q), norm(k)
+        # q, k = self.rotary(q), self.rotary(k)
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
@@ -343,7 +343,6 @@ class GPT(nn.Module):
         params: object,
         logits_processor: RegexLogitsProcessor,
         sampling_params: object,
-        attn_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         temperature = sampling_params.temperature
         temperature = 1.0 if temperature is None else temperature
@@ -356,11 +355,6 @@ class GPT(nn.Module):
                 if idx.size(1) <= self.config.block_size
                 else idx[:, -self.config.block_size :]
             )
-            # attn_mask_cond = (
-            #    attn_mask
-            #    if attn_mask.size(1) <= self.config.block_size
-            #    else attn_mask[:, -self.config.block_size :]
-            # )
 
             # Forward the model to get logits for the next token
             logits, _ = self(idx_cond)  # , attn_mask=attn_mask_cond)
@@ -371,7 +365,7 @@ class GPT(nn.Module):
             # Apply the invalid transition mask
             logits = logits_processor(idx.to(device="cpu"), logits.to(device="cpu")).to(
                 device="mps"
-            )
+            )  # outlines bug on mps device ? fixed by moving to cpu then back to mps
 
             # Optionally apply top-k filtering
             if top_k is not None:
@@ -387,7 +381,6 @@ class GPT(nn.Module):
 
             # Append the sampled token to the sequence
             idx = torch.cat((idx, idx_next), dim=1)
-            # attn_mask = torch.cat([attn_mask, attn_mask_next], dim=1)
 
         return idx
 
@@ -399,12 +392,12 @@ def create_gpt_model(
     model_size: str,
     device: torch.device,
 ) -> Tuple[GPT, str]:
-    if model_size == "small":
-        n_layers, n_head, n_embd = 1, 8, 128
-    elif model_size == "medium":
-        n_layers, n_head, n_embd = 4, 32, 128
-    elif model_size == "large":
-        n_layers, n_head, n_embd = 8, 64, 128
+    if model_size == "sm":
+        n_layers, n_head, n_embd = 2, 2, 64
+    elif model_size == "md":
+        n_layers, n_head, n_embd = 2, 2, 256
+    elif model_size == "md-2":
+        n_layers, n_head, n_embd = 2, 32, 256
 
     vocab_size = len(tokenizer.vocabulary.items())
     config = GPTConfig(
@@ -413,7 +406,7 @@ def create_gpt_model(
         n_embd=n_embd,
         block_size=block_size,
         vocab_size=vocab_size,
-        dropout=0.0,
+        dropout=0.0,  # no dropout for now, too small model + needed for torch.compile on mps devices
         bias=False,
     )
     model = GPT(config, device).to(device)

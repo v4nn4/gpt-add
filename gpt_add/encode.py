@@ -1,7 +1,7 @@
 import torch
 from gpt_add.data import create_equations
 from gpt_add.tokenizer import CustomTokenizer
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 
 def encode_equations(
@@ -17,20 +17,22 @@ def encode_equations(
     return (encoded_prompts, prompts_attn_mask, encoded_targets)
 
 
-def prepare_data() -> Tuple[
+def prepare_data(operator: Callable[[int, int], int], symbol: str) -> Tuple[
     torch.Tensor,
     torch.Tensor,
     Tuple[List[List[int]], List[List[int]], List[List[int]]],
     CustomTokenizer,
 ]:
     print("Preparing dataset...")
-    secret_equation = "123+456=579"
-    train_equations, test_equations = create_equations(ratio=0.8)
+    secret_equation = "123+456=0579"
+    train_equations, test_equations = create_equations(
+        operator=operator, symbol=symbol, ratio=0.1
+    )
     if secret_equation in train_equations:
         train_equations.remove(secret_equation)
     validation_split = 0.5
 
-    tokenizer = CustomTokenizer()
+    tokenizer = CustomTokenizer(symbol)
     n_val = int(validation_split * len(test_equations))
 
     train_data, _ = tokenizer.encode(";".join(train_equations))
