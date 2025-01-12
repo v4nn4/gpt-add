@@ -10,12 +10,12 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 import inspect
 import math
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from outlines.processors.structured import RegexLogitsProcessor
-from typing import Optional, Tuple
 
 
 class LayerNorm(nn.Module):

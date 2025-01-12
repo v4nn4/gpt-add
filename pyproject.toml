@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "gpt-add"
 version = "0.1.0"
-description = ""
-authors = []
+description = "Learning addition with a GPT model based on nanoGPT."
+authors = ["v4nn4"]
 readme = "README.md"
 
 [tool.poetry.dependencies]

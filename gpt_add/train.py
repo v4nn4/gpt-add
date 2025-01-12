@@ -7,10 +7,10 @@ from outlines import generate
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 
-from gpt_add.operation import check_rhs, get_operator, match
 from gpt_add.encode import prepare_data
 from gpt_add.models.bigram import BigramModel, create_bigram_model
 from gpt_add.models.gpt import GPT, create_gpt_model
+from gpt_add.operation import check_rhs, get_operator, match
 
 torch._dynamo.config.suppress_errors = True
 

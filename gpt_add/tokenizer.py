@@ -1,5 +1,6 @@
-from outlines.models.tokenizer import Tokenizer
 from typing import List, Tuple
+
+from outlines.models.tokenizer import Tokenizer
 
 
 class CustomTokenizer(Tokenizer):

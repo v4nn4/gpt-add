@@ -1,7 +1,9 @@
+from typing import Callable, List, Tuple
+
 import torch
+
 from gpt_add.data import create_equations
 from gpt_add.tokenizer import CustomTokenizer
-from typing import Callable, List, Tuple
 
 
 def encode_equations(
