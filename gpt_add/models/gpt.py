@@ -244,11 +244,15 @@ class GPT(nn.Module):
 
     def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
+            torch.nn.init.xavier_uniform_(module.weight)
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        elif isinstance(module, nn.LayerNorm):
+            torch.nn.init.ones_(module.weight)
+            torch.nn.init.zeros_(module.bias)
 
     def forward(
         self,
@@ -336,6 +340,22 @@ class GPT(nn.Module):
 
         return optimizer
 
+    def estimate_mfu(self, fwdbwd_per_iter, dt):
+        """estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS"""
+        # first estimate the number of flops we do per iteration.
+        # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
+        N = self.get_num_params()
+        cfg = self.config
+        L, H, Q, T = cfg.n_layer, cfg.n_head, cfg.n_embd // cfg.n_head, cfg.block_size
+        flops_per_token = 6 * N + 12 * L * H * Q * T
+        flops_per_fwdbwd = flops_per_token * T
+        flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
+        # express our flops throughput as ratio of A100 bfloat16 peak flops
+        flops_achieved = flops_per_iter * (1.0 / dt)  # per second
+        flops_promised = 312e12  # A100 GPU bfloat16 peak flops is 312 TFLOPS
+        mfu = flops_achieved / flops_promised
+        return mfu
+
     @torch.no_grad()
     def generate(
         self,
@@ -392,12 +412,14 @@ def create_gpt_model(
     model_size: str,
     device: torch.device,
 ) -> Tuple[GPT, str]:
-    if model_size == "sm":
+    if model_size == "xsmall":
+        n_layers, n_head, n_embd = 1, 1, 32
+    if model_size == "small":
+        n_layers, n_head, n_embd = 2, 2, 32
+    if model_size == "medium":
         n_layers, n_head, n_embd = 2, 2, 64
-    elif model_size == "md":
-        n_layers, n_head, n_embd = 2, 2, 256
-    elif model_size == "md-2":
-        n_layers, n_head, n_embd = 2, 32, 256
+    elif model_size == "large":
+        n_layers, n_head, n_embd = 2, 2, 128
 
     vocab_size = len(tokenizer.vocabulary.items())
     config = GPTConfig(

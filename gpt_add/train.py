@@ -56,10 +56,6 @@ def get_batch(
                     i, start:end
                 ]  # Unmask the segment between ';' and '='
 
-        # Unmask everything before the first semicolon
-        if semicolon_indices[0] < eq_indices[0]:
-            mask[: semicolon_indices[0] + 1] = y[i, : semicolon_indices[0] + 1]
-
         # Unmask everything after the last equal sign
         if eq_indices[-1] > semicolon_indices[-1]:
             mask[eq_indices[-1] - 1 :] = y[i, eq_indices[-1] - 1 :]
@@ -100,7 +96,6 @@ def estimate_scores(
     generator = generate.regex(
         model,
         regex_str="(?:[0-1][0-9]{3});",
-        # regex_str="(?:[1-9]|[1-9][0-9]|[1-9][0-9]{2});",
     )
 
     max_tokens = 4
@@ -163,7 +158,7 @@ def train(
     ) = prepare_data(operator=operator, symbol=symbol)
 
     model, model_name = (
-        create_bigram_model(tokenizer, block_size=block_size)
+        create_bigram_model(tokenizer, block_size=block_size, device=device)
         if use_bigram
         else create_gpt_model(
             tokenizer,
@@ -176,7 +171,7 @@ def train(
     model = torch.compile(model, backend="aot_eager")
 
     optimizer = torch.optim.AdamW(lr=learning_rate, params=model.parameters())
-    scheduler = ReduceLROnPlateau(optimizer, patience=2, factor=0.5, min_lr=1e-6)
+    scheduler = ReduceLROnPlateau(optimizer, patience=5, factor=0.5, min_lr=1e-6)
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     experiment_name = f"{model_name}_{timestamp}"
@@ -191,6 +186,7 @@ def train(
         optimizer.zero_grad()
         _, loss = model(xb, yb)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         if iter % eval_interval == 0:
@@ -215,9 +211,8 @@ def train(
                 )
 
             # Log metrics to TensorBoard
-            writer.add_scalars(
-                "Loss", {"Train": train_loss, "Validation": val_loss}, iter
-            )
+            writer.add_scalar("Loss/Train", train_loss, iter)
+            writer.add_scalar("Loss/Validation", val_loss, iter)
             writer.add_scalar("Score/Format", format_score, iter)
             writer.add_scalar("Score/Approx", approx_score, iter)
             writer.add_scalar("Score/Exact", exact_score, iter)
@@ -226,7 +221,7 @@ def train(
             print(
                 f"step {iter}: train loss {train_loss:.4f}, val loss {val_loss:.4f}, format_score {format_score:.4f}, abs_diff {approx_score:.4f}, value_score {exact_score:.4f}, lr {current_lr}"
             )
-            scheduler.step(metrics=1 - exact_score)
+            scheduler.step(metrics=approx_score)
 
     if save_model:
         os.makedirs("build", exist_ok=True)
