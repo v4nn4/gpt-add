@@ -1,9 +1,7 @@
-from typing import Callable, List, Tuple
-
 import torch
-
 from gpt_add.data import create_equations
 from gpt_add.tokenizer import CustomTokenizer
+from typing import Callable, List, Tuple
 
 
 def encode_equations(
@@ -26,9 +24,9 @@ def prepare_data(operator: Callable[[int, int], int], symbol: str) -> Tuple[
     CustomTokenizer,
 ]:
     print("Preparing dataset...")
-    secret_equation = "123+456=0579"
+    secret_equation = "123+456=579"
     train_equations, test_equations = create_equations(
-        operator=operator, symbol=symbol, ratio=0.1
+        operator=operator, symbol=symbol, ratio=0.2
     )
     if secret_equation in train_equations:
         train_equations.remove(secret_equation)

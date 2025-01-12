@@ -1,9 +1,8 @@
-from typing import Optional, Tuple
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from outlines.models.tokenizer import Tokenizer
+from typing import Optional, Tuple
 
 
 class BigramModel(nn.Module):

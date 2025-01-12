@@ -6,10 +6,10 @@ from typing import Callable, List, Tuple
 def create_equations(
     operator: Callable[[int, int], int], symbol, ratio: float = 0.8
 ) -> Tuple[List[str], List[str]]:
-    digits = range(1000)
+    digits = range(10)
     equations = [
-        f"{a:03}{symbol}{b:03}={operator(a, b):04}"
-        for a, b in product(digits, repeat=2)
+        f"{100*a1+10*a2+a3}{symbol}{100*b1+10*b2+b3}={operator(100*a1+10*a2+a3, 100*b1+10*b2+b3)}"
+        for a1, a2, a3, b1, b2, b3 in product(digits, repeat=6)
     ]
     random.shuffle(equations)
     split_index = int(ratio * len(equations))
