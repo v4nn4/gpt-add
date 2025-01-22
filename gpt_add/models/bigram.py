@@ -72,7 +72,6 @@ class BigramModel(nn.Module):
         weight_decay: float,
         learning_rate: float,
         betas: Tuple[float, float],
-        device_type: str,
     ) -> torch.optim.Optimizer:
         optimizer = torch.optim.AdamW(
             self.parameters(), lr=learning_rate, betas=betas, weight_decay=weight_decay

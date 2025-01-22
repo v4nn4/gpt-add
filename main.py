@@ -16,6 +16,7 @@ class Trainer:
         learning_rate: float = 0.0005,
         eval_iters: int = 100,
         save_model: bool = False,
+        operation: str = "add",
     ) -> None:
         train(
             nb_samples_scoring=nb_samples_scoring,
@@ -28,6 +29,7 @@ class Trainer:
             learning_rate=learning_rate,
             eval_iters=eval_iters,
             save_model=save_model,
+            operation=operation,
         )
 
 

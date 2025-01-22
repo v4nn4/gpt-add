@@ -2,16 +2,30 @@ import re
 from typing import Callable, Tuple
 
 
-def get_operator(name: str) -> Tuple[Callable[[int, int], int], str, str]:
+def get_operator(name: str) -> Tuple[Callable[[int, int], int], str, str, str, int]:
     if name == "add":
-        return (lambda x, y: x + y, r"^\d{1,3}\+\d{1,3}=\d{1,4}$", "+")
+        return (
+            lambda x, y: x + y,
+            r"^\d{1,3}\+\d{1,3}=\d{1,4}$",
+            "+",
+            "(?:[0-1][0-9]{3});",
+            4,
+        )
     if name == "multiply":
-        return (lambda x, y: x * y, r"^\d{1,3}\*\d{1,3}=\d{1,6}$", "*")
+        return (
+            lambda x, y: x * y,
+            r"^\d{1,3}\*\d{1,3}=\d{1,6}$",
+            "*",
+            "(?:[0-9]{6});",
+            6,
+        )
     if name == "divide":
         return (
             lambda x, y: x // y if y != 0 else 9999,
             r"^\d{1,3}\/\d{1,3}=\d{1,3}$",
             "/",
+            "(?:[0-9]{3});",
+            3,
         )
     raise Exception(f"Operator {name} unknown")
 

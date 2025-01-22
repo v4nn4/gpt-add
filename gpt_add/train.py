@@ -4,7 +4,7 @@ from datetime import datetime
 import torch
 import torch._dynamo
 from outlines import generate
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
 from gpt_add.encode import prepare_data
@@ -90,15 +90,16 @@ def estimate_scores(
     operator: str,
     symbol: str,
     pattern: str,
+    lgoit_processor_reegex: str,
+    max_tokens: int,
     prompts: list[torch.Tensor],
     targets: list[torch.Tensor],
 ) -> tuple[float, float, float]:
     generator = generate.regex(
         model,
-        regex_str="(?:[0-1][0-9]{3});",
+        regex_str=lgoit_processor_reegex,
     )
 
-    max_tokens = 4
     generated_tokens = []
     for prompt in prompts:
         generated_token = generator(
@@ -147,9 +148,12 @@ def train(
     eval_interval: int,
     learning_rate: float,
     eval_iters: int,
+    operation: str,
 ) -> None:
     print("Starting training model...")
-    operator, pattern, symbol = get_operator("add")
+    operator, pattern, symbol, lgoit_processor_reegex, max_tokens = get_operator(
+        operation
+    )
     (
         train_data,
         val_data,
@@ -171,7 +175,7 @@ def train(
     model = torch.compile(model, backend="aot_eager")
 
     optimizer = torch.optim.AdamW(lr=learning_rate, params=model.parameters())
-    scheduler = ReduceLROnPlateau(optimizer, patience=5, factor=0.5, min_lr=1e-6)
+    scheduler = CosineAnnealingLR(optimizer, T_max=10, eta_min=1e-6)
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     experiment_name = f"{model_name}_{timestamp}"
@@ -206,6 +210,8 @@ def train(
                     operator,
                     symbol,
                     pattern,
+                    lgoit_processor_reegex,
+                    max_tokens,
                     test_prompts,
                     test_targets,
                 )
@@ -221,7 +227,7 @@ def train(
             print(
                 f"step {iter}: train loss {train_loss:.4f}, val loss {val_loss:.4f}, format_score {format_score:.4f}, abs_diff {approx_score:.4f}, value_score {exact_score:.4f}, lr {current_lr}"
             )
-            scheduler.step(metrics=approx_score)
+            scheduler.step()
 
     if save_model:
         os.makedirs("build", exist_ok=True)

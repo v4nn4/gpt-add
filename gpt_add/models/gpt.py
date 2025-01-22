@@ -30,35 +30,6 @@ class LayerNorm(nn.Module):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
-def norm(x: torch.Tensor) -> torch.Tensor:
-    return F.rms_norm(x, (x.size(-1),))
-
-
-class Rotary(torch.nn.Module):
-
-    def __init__(self, dim, base=10000):
-        super().__init__()
-        self.register_buffer("inv_freq", (1 / base) ** (torch.arange(0, dim, 2) / dim))
-        self.seq_len_cached = None
-        self.cos_cached = None
-        self.sin_cached = None
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        seq_len = x.shape[1]
-        if seq_len != self.seq_len_cached:
-            t = torch.arange(seq_len, device=x.device)
-            freqs = torch.outer(t, self.inv_freq)
-            self.seq_len_cached = seq_len
-            self.cos_cached = freqs.cos()
-            self.sin_cached = freqs.sin()
-        cos, sin = self.cos_cached[None, :, None, :], self.sin_cached[None, :, None, :]
-        # apply_rotary_emb(x, cos, sin)
-        x1, x2 = x.chunk(2, dim=3)
-        y1 = x1 * cos + x2 * sin
-        y2 = x1 * (-sin) + x2 * cos
-        return torch.cat((y1, y2), 3).type_as(x)
-
-
 class CausalSelfAttention(nn.Module):
 
     def __init__(self, config, device):
@@ -78,9 +49,6 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout = config.dropout
-        dim = config.n_embd
-        num_heads = config.n_head
-        # self.rotary = Rotary(dim // num_heads)  # dim // num_heads = head_dim
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
         if not self.flash:
@@ -107,8 +75,6 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, -1)
         q = q.view(B, T, self.n_head, -1)
         v = v.view(B, T, self.n_head, -1)
-        # q, k = norm(q), norm(k)
-        # q, k = self.rotary(q), self.rotary(k)
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
@@ -343,7 +309,6 @@ class GPT(nn.Module):
         params: object,
         logits_processor: RegexLogitsProcessor,
         sampling_params: object,
-        attn_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         temperature = sampling_params.temperature
         temperature = 1.0 if temperature is None else temperature
@@ -356,14 +321,9 @@ class GPT(nn.Module):
                 if idx.size(1) <= self.config.block_size
                 else idx[:, -self.config.block_size :]
             )
-            # attn_mask_cond = (
-            #    attn_mask
-            #    if attn_mask.size(1) <= self.config.block_size
-            #    else attn_mask[:, -self.config.block_size :]
-            # )
 
             # Forward the model to get logits for the next token
-            logits, _ = self(idx_cond)  # , attn_mask=attn_mask_cond)
+            logits, _ = self(idx_cond)
 
             # Get logits for the last token
             logits = logits[:, -1, :] / temperature
@@ -371,7 +331,7 @@ class GPT(nn.Module):
             # Apply the invalid transition mask
             logits = logits_processor(idx.to(device="cpu"), logits.to(device="cpu")).to(
                 device="mps"
-            )
+            )  # bug in MPS, need to move back to CPU
 
             # Optionally apply top-k filtering
             if top_k is not None:
@@ -383,11 +343,9 @@ class GPT(nn.Module):
 
             # Sample the next token
             idx_next = torch.multinomial(probs, num_samples=1)
-            # attn_mask_next = torch.ones_like(idx_next)
 
             # Append the sampled token to the sequence
             idx = torch.cat((idx, idx_next), dim=1)
-            # attn_mask = torch.cat([attn_mask, attn_mask_next], dim=1)
 
         return idx
 
@@ -405,6 +363,8 @@ def create_gpt_model(
         n_layers, n_head, n_embd = 2, 2, 256
     elif model_size == "large":
         n_layers, n_head, n_embd = 2, 32, 256
+    elif model_size == "md":
+        n_layers, n_head, n_embd = 8, 8, 32
 
     vocab_size = len(tokenizer.vocabulary.items())
     config = GPTConfig(
@@ -413,7 +373,7 @@ def create_gpt_model(
         n_embd=n_embd,
         block_size=block_size,
         vocab_size=vocab_size,
-        dropout=0.2,
+        dropout=0.0,
         bias=False,
     )
     model = GPT(config, device).to(device)
