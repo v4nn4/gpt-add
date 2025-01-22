@@ -4,8 +4,7 @@
 
 Learning addition with a GPT model based on [nanoGPT](https://github.com/karpathy/nanoGPT).
 
-👉 Companion blog post: https://v4nn4.github.io/posts/learning-addition-with-gpt/.
-👉 Medium article : https://medium.com/@romainflorentz/learning-addition-with-gpt-942dc4b72210
+👉 Companion blog post: https://v4nn4.github.io/posts/learning-addition-with-gpt/ | [Medium](https://medium.com/@romainflorentz/learning-addition-with-gpt-942dc4b72210)
 
 ## The Problem
 
