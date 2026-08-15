@@ -24,44 +24,30 @@ device = (
 )
 
 
+_answer_mask_cache: dict[int, torch.Tensor] = {}
+
+
+def _answer_mask(data: torch.Tensor) -> torch.Tensor:
+    """Boolean mask over the token stream: True from each '=' (12) through the
+    following ';' (11), i.e. the tokens whose prediction should incur a loss."""
+    key = id(data)
+    if key not in _answer_mask_cache:
+        eq = data == 12
+        semi = data == 11
+        inside = (eq.int().cumsum(0) - semi.int().cumsum(0)).clamp(min=0).bool() | semi
+        _answer_mask_cache[key] = inside
+    return _answer_mask_cache[key]
+
+
 def get_batch(
     data: torch.Tensor, block_size: int, batch_size: int
 ) -> tuple[torch.Tensor, torch.Tensor]:
     ix = torch.randint(0, len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i : i + block_size] for i in ix])
-    y = torch.stack([data[i + 1 : i + block_size + 1] for i in ix])
-
-    # Mask y based on the position of ';' and '=' in x
-    for i in range(batch_size):
-        eq_indices = (x[i] == 12).nonzero(as_tuple=True)[
-            0
-        ]  # '=' token is represented by 12
-        semicolon_indices = (x[i] == 11).nonzero(as_tuple=True)[
-            0
-        ]  # ';' token is represented by 11
-
-        # Initialize mask with -1
-        mask = torch.ones_like(y[i]) * -1
-
-        # Unmask y for segments between ';' and '='
-        for j in range(len(eq_indices)):
-            if j < len(semicolon_indices):
-                if eq_indices[j] < semicolon_indices[j]:
-                    start = eq_indices[j] - 1
-                    end = semicolon_indices[j] + 1
-                else:
-                    start = semicolon_indices[j] - 1
-                    end = eq_indices[j] + 1
-                mask[start:end] = y[
-                    i, start:end
-                ]  # Unmask the segment between ';' and '='
-
-        # Unmask everything after the last equal sign
-        if eq_indices[-1] > semicolon_indices[-1]:
-            mask[eq_indices[-1] - 1 :] = y[i, eq_indices[-1] - 1 :]
-
-        y[i] = mask
-
+    idx = ix[:, None] + torch.arange(block_size)[None, :]
+    x = data[idx]
+    y = data[idx + 1]
+    # Only keep loss on '=', the answer digits and the closing ';'
+    y = torch.where(_answer_mask(data)[idx + 1], y, -1)
     x, y = x.to(device), y.to(device)
     return x, y
 
@@ -174,8 +160,34 @@ def train(
     )
     model = torch.compile(model, backend="aot_eager")
 
-    optimizer = torch.optim.AdamW(lr=learning_rate, params=model.parameters())
-    scheduler = CosineAnnealingLR(optimizer, T_max=10, eta_min=1e-6)
+    if use_bigram:
+        optimizers = [torch.optim.AdamW(lr=learning_rate, params=model.parameters())]
+    else:
+        # Muon on the 2D hidden matrices, AdamW on embeddings / norms / head.
+        # adjust_lr_fn="match_rms_adamw" is required; the default plateaus.
+        hidden = [
+            p
+            for n, p in model.named_parameters()
+            if p.ndim == 2 and not any(k in n for k in ("wte", "wpe", "lm_head"))
+        ]
+        rest = [
+            p
+            for n, p in model.named_parameters()
+            if not (p.ndim == 2 and not any(k in n for k in ("wte", "wpe", "lm_head")))
+        ]
+        optimizers = [
+            torch.optim.Muon(
+                hidden,
+                lr=3 * learning_rate,
+                momentum=0.95,
+                weight_decay=0.0,
+                adjust_lr_fn="match_rms_adamw",
+            ),
+            torch.optim.AdamW(lr=learning_rate, params=rest),
+        ]
+    schedulers = [
+        CosineAnnealingLR(o, T_max=max_iters, eta_min=1e-6) for o in optimizers
+    ]
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     experiment_name = f"{model_name}_{timestamp}"
@@ -187,11 +199,15 @@ def train(
 
     for iter in range(max_iters):
         xb, yb = get_batch(train_data, block_size, batch_size)
-        optimizer.zero_grad()
+        for optimizer in optimizers:
+            optimizer.zero_grad()
         _, loss = model(xb, yb)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+        for optimizer in optimizers:
+            optimizer.step()
+        for scheduler in schedulers:
+            scheduler.step()
 
         if iter % eval_interval == 0:
             model.eval()
@@ -223,11 +239,10 @@ def train(
             writer.add_scalar("Score/Approx", approx_score, iter)
             writer.add_scalar("Score/Exact", exact_score, iter)
 
-            current_lr = optimizer.param_groups[0]["lr"]
+            current_lr = optimizers[0].param_groups[0]["lr"]
             print(
                 f"step {iter}: train loss {train_loss:.4f}, val loss {val_loss:.4f}, format_score {format_score:.4f}, abs_diff {approx_score:.4f}, value_score {exact_score:.4f}, lr {current_lr}"
             )
-            scheduler.step()
 
     if save_model:
         os.makedirs("build", exist_ok=True)
