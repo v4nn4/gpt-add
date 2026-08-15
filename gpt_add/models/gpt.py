@@ -358,11 +358,11 @@ def create_gpt_model(
     device: torch.device,
 ) -> Tuple[GPT, str]:
     if model_size == "small":
-        n_layers, n_head, n_embd = 2, 2, 64
+        n_layers, n_head, n_embd = 2, 2, 32
     elif model_size == "medium":
-        n_layers, n_head, n_embd = 2, 2, 256
+        n_layers, n_head, n_embd = 2, 2, 64
     elif model_size == "large":
-        n_layers, n_head, n_embd = 2, 32, 256
+        n_layers, n_head, n_embd = 2, 2, 128
     elif model_size == "md":
         n_layers, n_head, n_embd = 8, 8, 32
 
