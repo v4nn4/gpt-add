@@ -17,7 +17,11 @@ def encode_equations(
     return (encoded_prompts, prompts_attn_mask, encoded_targets)
 
 
-def prepare_data(operator: Callable[[int, int], int], symbol: str) -> Tuple[
+def prepare_data(
+    operator: Callable[[int, int], int],
+    symbol: str,
+    nb_test_samples: int | None = None,
+) -> Tuple[
     torch.Tensor,
     torch.Tensor,
     Tuple[List[List[int]], List[List[int]], List[List[int]]],
@@ -40,7 +44,7 @@ def prepare_data(operator: Callable[[int, int], int], symbol: str) -> Tuple[
     val_data, _ = tokenizer.encode(";".join(test_equations[n_val:]))
     val_data = torch.tensor(val_data, dtype=torch.long)
     test_prompts, prompts_attn_mask, test_targets = encode_equations(
-        test_equations[:n_val], tokenizer
+        test_equations[:n_val][:nb_test_samples], tokenizer
     )
 
     return (

@@ -132,6 +132,7 @@ def train(
     learning_rate: float,
     eval_iters: int,
     operation: str,
+    stop_at_score: float | None = None,
 ) -> None:
     print("Starting training model...")
     operator, pattern, symbol, lgoit_processor_reegex, max_tokens = get_operator(
@@ -142,7 +143,9 @@ def train(
         val_data,
         (test_prompts, _, test_targets),
         tokenizer,
-    ) = prepare_data(operator=operator, symbol=symbol)
+    ) = prepare_data(
+        operator=operator, symbol=symbol, nb_test_samples=nb_samples_scoring
+    )
 
     model, model_name = (
         create_bigram_model(tokenizer, block_size=block_size, device=device)
@@ -194,6 +197,7 @@ def train(
     test_prompts = test_prompts[:nb_samples_scoring]
     test_targets = test_targets[:nb_samples_scoring]
 
+    evals_at_target = 0
     for iter in range(max_iters):
         xb, yb = get_batch(train_data, block_size, batch_size)
         for optimizer in optimizers:
@@ -240,6 +244,15 @@ def train(
             print(
                 f"step {iter}: train loss {train_loss:.4f}, val loss {val_loss:.4f}, format_score {format_score:.4f}, abs_diff {approx_score:.4f}, value_score {exact_score:.4f}, lr {current_lr}"
             )
+
+            # Stop once the exact score holds the target on two consecutive evals
+            if stop_at_score is not None:
+                evals_at_target = (
+                    evals_at_target + 1 if exact_score >= stop_at_score else 0
+                )
+                if evals_at_target >= 2:
+                    print(f"Reached exact score {stop_at_score} twice, stopping.")
+                    break
 
     if save_model:
         os.makedirs("build", exist_ok=True)
