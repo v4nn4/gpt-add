@@ -81,23 +81,20 @@ def estimate_scores(
     prompts: list[torch.Tensor],
     targets: list[torch.Tensor],
 ) -> tuple[float, float, float]:
-    generator = generate.regex(
+    processor = generate.regex(
         model,
         regex_str=lgoit_processor_reegex,
-    )
+    ).logits_processor
 
-    generated_tokens = []
-    for prompt in prompts:
-        generated_token = generator(
-            torch.tensor(prompt, dtype=torch.long, device=device).unsqueeze(0),
-            max_tokens=max_tokens,
-            stop_at=";",
-        )
-        generated_token = generated_token.squeeze(0)  # Remove batch dimension
-        generated_tokens.append(generated_token)  # Add batch dimension back
-    generated_text = [
-        model.tokenizer.decode(tokens.tolist()) for tokens in generated_tokens
-    ]
+    # All prompts have the same length, so generate them as a single batch;
+    # the logits processor walks the regex FSM per row (on CPU).
+    idx = torch.tensor(prompts, dtype=torch.long, device=device)
+    for _ in range(max_tokens + 1):  # +1 for the closing ';'
+        logits, _ = model(idx)
+        logits = processor(idx.to("cpu"), logits[:, -1, :].to("cpu"))
+        probs = torch.softmax(logits, dim=-1)
+        idx = torch.cat((idx, torch.multinomial(probs, 1).to(idx.device)), dim=1)
+    generated_text = [model.tokenizer.decode(row.tolist()) for row in idx]
     format_score, abs_diff, value_score = 0, 0, 0
     len_format, len_diff = 0, 0
     for generated_text, target_answer in zip(generated_text, targets):
