@@ -21,6 +21,7 @@ def prepare_data(
     operator: Callable[[int, int], int],
     symbol: str,
     nb_test_samples: int | None = None,
+    reverse_answer: bool = False,
 ) -> Tuple[
     torch.Tensor,
     torch.Tensor,
@@ -29,10 +30,13 @@ def prepare_data(
 ]:
     print("Preparing dataset...")
     train_equations, test_equations = create_equations(
-        operator=operator, symbol=symbol, ratio=0.1
+        operator=operator, symbol=symbol, ratio=0.1, reverse_answer=reverse_answer
     )
     width = len(train_equations[0].split("=")[1])
-    secret_equation = f"123{symbol}456={operator(123, 456):0{width}}"
+    secret_answer = f"{operator(123, 456):0{width}}"
+    if reverse_answer:
+        secret_answer = secret_answer[::-1]
+    secret_equation = f"123{symbol}456={secret_answer}"
     if secret_equation in train_equations:
         train_equations.remove(secret_equation)
     validation_split = 0.5

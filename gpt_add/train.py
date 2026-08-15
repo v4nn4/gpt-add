@@ -86,6 +86,7 @@ def estimate_scores(
     max_tokens: int,
     prompts: list[torch.Tensor],
     targets: list[torch.Tensor],
+    reverse_answer: bool = False,
 ) -> tuple[float, float, float]:
     processor = generate.regex(
         model,
@@ -112,6 +113,7 @@ def estimate_scores(
                 generated_answer,
                 operator,
                 symbol,
+                reverse_answer,
             )
             abs_diff += c
             parsed_answer = generated_answer.split("=")[1].strip()
@@ -139,10 +141,11 @@ def train(
     eval_iters: int,
     operation: str,
     stop_at_score: float | None = None,
+    reverse_answer: bool = False,
 ) -> None:
     print("Starting training model...")
     operator, pattern, symbol, lgoit_processor_reegex, max_tokens = get_operator(
-        operation
+        operation, reverse_answer
     )
     (
         train_data,
@@ -150,7 +153,10 @@ def train(
         (test_prompts, _, test_targets),
         tokenizer,
     ) = prepare_data(
-        operator=operator, symbol=symbol, nb_test_samples=nb_samples_scoring
+        operator=operator,
+        symbol=symbol,
+        nb_test_samples=nb_samples_scoring,
+        reverse_answer=reverse_answer,
     )
 
     model, model_name = (
@@ -238,6 +244,7 @@ def train(
                     max_tokens,
                     test_prompts,
                     test_targets,
+                    reverse_answer,
                 )
 
             # Log metrics to TensorBoard
