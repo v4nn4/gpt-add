@@ -45,3 +45,13 @@ We use the GPT model from nanoGPT. The model is trained to predict the next toke
 ![Training Loss](./assets/loss.png)
 ![Approximate Score](./assets/score_approx.png)
 ![Exact Score](./assets/score_exact.png)
+
+## Update (2026)
+
+The results above were regenerated with PyTorch 2.13 (managed with [uv](https://docs.astral.sh/uv/)), two bug fixes and one upgrade:
+
+- Fixed a regression that dropped the leading-zero padding from generated equations, capping the exact score at ~50%.
+- Fixed the loss mask, which silently trained on the left-hand side of equations in about half of the batches.
+- The transformer weights now train with [Muon](https://kellerjordan.github.io/posts/muon/) (`torch.optim.Muon`), with per-iteration cosine annealing.
+
+All three models now learn exact addition within 12k steps instead of 50k, reaching 90% / 98% / 99% exact score for small / medium / large.
