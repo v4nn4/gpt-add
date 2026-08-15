@@ -28,10 +28,11 @@ def prepare_data(
     CustomTokenizer,
 ]:
     print("Preparing dataset...")
-    secret_equation = "123+456=0579"
     train_equations, test_equations = create_equations(
         operator=operator, symbol=symbol, ratio=0.1
     )
+    width = len(train_equations[0].split("=")[1])
+    secret_equation = f"123{symbol}456={operator(123, 456):0{width}}"
     if secret_equation in train_equations:
         train_equations.remove(secret_equation)
     validation_split = 0.5

@@ -27,27 +27,31 @@ device = (
 _answer_mask_cache: dict[int, torch.Tensor] = {}
 
 
-def _answer_mask(data: torch.Tensor) -> torch.Tensor:
-    """Boolean mask over the token stream: True from each '=' (12) through the
-    following ';' (11), i.e. the tokens whose prediction should incur a loss."""
+def _answer_mask(data: torch.Tensor, eq_id: int, semi_id: int) -> torch.Tensor:
+    """Boolean mask over the token stream: True from each '=' through the
+    following ';', i.e. the tokens whose prediction should incur a loss."""
     key = id(data)
     if key not in _answer_mask_cache:
-        eq = data == 12
-        semi = data == 11
+        eq = data == eq_id
+        semi = data == semi_id
         inside = (eq.int().cumsum(0) - semi.int().cumsum(0)).clamp(min=0).bool() | semi
         _answer_mask_cache[key] = inside
     return _answer_mask_cache[key]
 
 
 def get_batch(
-    data: torch.Tensor, block_size: int, batch_size: int
+    data: torch.Tensor,
+    block_size: int,
+    batch_size: int,
+    eq_id: int = 12,
+    semi_id: int = 11,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     ix = torch.randint(0, len(data) - block_size, (batch_size,))
     idx = ix[:, None] + torch.arange(block_size)[None, :]
     x = data[idx]
     y = data[idx + 1]
     # Only keep loss on '=', the answer digits and the closing ';'
-    y = torch.where(_answer_mask(data)[idx + 1], y, -1)
+    y = torch.where(_answer_mask(data, eq_id, semi_id)[idx + 1], y, -1)
     x, y = x.to(device), y.to(device)
     return x, y
 
@@ -59,10 +63,12 @@ def estimate_loss(
     block_size: int,
     batch_size: int,
     eval_iters: int,
+    eq_id: int = 12,
+    semi_id: int = 11,
 ) -> float:
     losses = torch.zeros(eval_iters)
     for k in range(eval_iters):
-        x, y = get_batch(data, block_size, batch_size)
+        x, y = get_batch(data, block_size, batch_size, eq_id, semi_id)
         _, loss = model(x, y)
         losses[k] = loss.item()
     return losses.mean().item()
@@ -197,9 +203,10 @@ def train(
     test_prompts = test_prompts[:nb_samples_scoring]
     test_targets = test_targets[:nb_samples_scoring]
 
+    eq_id, semi_id = tokenizer.stoi["="], tokenizer.stoi[";"]
     evals_at_target = 0
     for iter in range(max_iters):
-        xb, yb = get_batch(train_data, block_size, batch_size)
+        xb, yb = get_batch(train_data, block_size, batch_size, eq_id, semi_id)
         for optimizer in optimizers:
             optimizer.zero_grad()
         _, loss = model(xb, yb)
@@ -214,10 +221,10 @@ def train(
             model.eval()
             with torch.no_grad():
                 train_loss = estimate_loss(
-                    model, train_data, block_size, batch_size, eval_iters
+                    model, train_data, block_size, batch_size, eval_iters, eq_id, semi_id
                 )
                 val_loss = estimate_loss(
-                    model, val_data, block_size, batch_size, eval_iters
+                    model, val_data, block_size, batch_size, eval_iters, eq_id, semi_id
                 )
 
                 format_score, approx_score, exact_score = estimate_scores(
