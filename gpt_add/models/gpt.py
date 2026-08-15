@@ -363,6 +363,8 @@ def create_gpt_model(
         n_layers, n_head, n_embd = 2, 2, 64
     elif model_size == "large":
         n_layers, n_head, n_embd = 2, 2, 128
+    elif model_size == "deep":
+        n_layers, n_head, n_embd = 6, 8, 256
     elif model_size == "md":
         n_layers, n_head, n_embd = 8, 8, 32
 

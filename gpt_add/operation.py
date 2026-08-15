@@ -2,13 +2,16 @@ import re
 from typing import Callable, Tuple
 
 
-def get_operator(name: str) -> Tuple[Callable[[int, int], int], str, str, str, int]:
+def get_operator(
+    name: str, reverse_answer: bool = False
+) -> Tuple[Callable[[int, int], int], str, str, str, int]:
     if name == "add":
         return (
             lambda x, y: x + y,
             r"^\d{1,3}\+\d{1,3}=\d{1,4}$",
             "+",
-            "(?:[0-1][0-9]{3});",
+            # A 4-digit sum starts with 0 or 1; reversed, that digit comes last
+            "(?:[0-9]{3}[0-1]);" if reverse_answer else "(?:[0-1][0-9]{3});",
             4,
         )
     if name == "multiply":
@@ -34,9 +37,17 @@ def match(s: str, pattern: str) -> bool:
     return re.match(pattern, s) is not None
 
 
-def check_rhs(s: str, operator: Callable[[int, int], int], symbol: str) -> int:
+def check_rhs(
+    s: str,
+    operator: Callable[[int, int], int],
+    symbol: str,
+    reverse_answer: bool = False,
+) -> int:
     lhs, rhs = s.split("=")
     num1, num2 = lhs.split(symbol)
+
+    if reverse_answer:
+        rhs = rhs[::-1]
 
     # Remove leading zeroes, but ensure '0' if empty
     num1 = num1.lstrip("0") or "0"

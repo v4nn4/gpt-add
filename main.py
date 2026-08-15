@@ -17,6 +17,8 @@ class Trainer:
         eval_iters: int = 100,
         save_model: bool = False,
         operation: str = "add",
+        stop_at_score: float | None = None,
+        reverse_answer: bool = False,
     ) -> None:
         train(
             nb_samples_scoring=nb_samples_scoring,
@@ -30,6 +32,8 @@ class Trainer:
             eval_iters=eval_iters,
             save_model=save_model,
             operation=operation,
+            stop_at_score=stop_at_score,
+            reverse_answer=reverse_answer,
         )
 
 
